@@ -1,4 +1,4 @@
-```python
+
 import streamlit as st
 import torch
 import logging
@@ -86,3 +86,4 @@ for message in st.session_state.messages:
 st.markdown("---")
 st.markdown(f"**Instructions**: Enter Urdu text. The bot will respond with a reconstructed sentence. Type 'exit' to clear the chat. Deployed on {st.session_state.get('deploy_date', 'October 24, 2025, 02:47 PM PKT')}.")
 ```
+
