@@ -82,6 +82,22 @@ def main():
         
         st.markdown("---")
         st.subheader("📝 مثالیں - Examples")
+        
+        # Initialize chatbot in session state
+        if 'chatbot' not in st.session_state:
+            with st.spinner("🔄 ماڈل لوڈ ہو رہا ہے..."):
+                st.session_state.chatbot = load_chatbot()
+        
+        # Initialize chat history
+        if 'messages' not in st.session_state:
+            st.session_state.messages = []
+            # Add welcome message
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": "السلام علیکم! میں اردو چیٹ بوٹ ہوں۔ آپ کیسے مدد کر سکتی ہوں؟"
+            })
+        
+        # Example buttons
         examples = [
             "کیا حال ہے؟",
             "آپ کا نام کیا ہے؟",
@@ -89,9 +105,20 @@ def main():
             "اسلام علیکم",
             "آپ کیسے ہیں؟"
         ]
+        
         for example in examples:
-            if st.button(example, key=example):
-                st.session_state.user_input = example
+            if st.button(example, key=f"example_{example}"):
+                # Process example message
+                st.session_state.messages.append({"role": "user", "content": example})
+                if st.session_state.chatbot:
+                    with st.spinner("🤖 بوٹ سوچ رہا ہے..."):
+                        try:
+                            bot_response = st.session_state.chatbot.generate_response(example)
+                            st.session_state.messages.append({"role": "assistant", "content": bot_response})
+                        except Exception as e:
+                            error_msg = f"معذرت، جواب دینے میں خرابی ہوئی۔ Sorry, error generating response: {str(e)}"
+                            st.session_state.messages.append({"role": "assistant", "content": error_msg})
+                st.rerun()
         
         st.markdown("---")
         st.markdown("""
@@ -103,24 +130,23 @@ def main():
         <p>• 256 ایمبیڈنگ ڈائمینشن</p>
         </div>
         """, unsafe_allow_html=True)
+        
+        # Clear chat button in sidebar
+        if st.session_state.messages and len(st.session_state.messages) > 1:
+            if st.button("🗑️ چیٹ صاف کریں - Clear Chat", use_container_width=True):
+                st.session_state.messages = [
+                    {
+                        "role": "assistant", 
+                        "content": "السلام علیکم! میں اردو چیٹ بوٹ ہوں۔ آپ کیسے مدد کر سکتی ہوں؟"
+                    }
+                ]
+                st.rerun()
     
-    # Initialize chatbot
-    if 'chatbot' not in st.session_state:
-        with st.spinner("🔄 ماڈل لوڈ ہو رہا ہے... Loading model..."):
-            st.session_state.chatbot = load_chatbot()
-    
-    # Initialize chat history
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
-        # Add welcome message
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": "السلام علیکم! میں اردو چیٹ بوٹ ہوں۔ آپ کیسے مدد کر سکتی ہوں؟"
-        })
-    
-    # Display chat messages
+    # Main chat area
     chat_container = st.container()
+    
     with chat_container:
+        # Display chat messages
         for message in st.session_state.messages:
             if message["role"] == "user":
                 st.markdown(f"""
@@ -137,31 +163,36 @@ def main():
                 </div>
                 """, unsafe_allow_html=True)
     
-    # Chat input
+    # Chat input form
     st.markdown("---")
-    col1, col2 = st.columns([4, 1])
     
-    with col1:
-        user_input = st.text_input(
-            "اپنا پیغام یہاں لکھیں - Type your message here:",
-            key="user_input",
-            placeholder="اپنا پیغام یہاں لکھیں... Type your message here...",
-            label_visibility="collapsed"
-        )
+    with st.form(key="chat_form", clear_on_submit=True):
+        col1, col2 = st.columns([4, 1])
+        
+        with col1:
+            user_input = st.text_input(
+                "اپنا پیغام یہاں لکھیں - Type your message here:",
+                key="user_input",
+                placeholder="اپنا پیغام یہاں لکھیں... Type your message here...",
+                label_visibility="collapsed"
+            )
+        
+        with col2:
+            submit_button = st.form_submit_button(
+                "📤 بھیجیں - Send", 
+                use_container_width=True
+            )
     
-    with col2:
-        send_button = st.button("📤 بھیجیں - Send", use_container_width=True)
-    
-    # Handle user input
-    if (user_input and (send_button or st.session_state.get('user_input_trigger', False))) or (send_button and user_input):
+    # Handle form submission
+    if submit_button and user_input.strip():
         # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({"role": "user", "content": user_input.strip()})
         
         # Generate bot response
         if st.session_state.chatbot:
             with st.spinner("🤖 بوٹ سوچ رہا ہے... Bot is thinking..."):
                 try:
-                    bot_response = st.session_state.chatbot.generate_response(user_input)
+                    bot_response = st.session_state.chatbot.generate_response(user_input.strip())
                     st.session_state.messages.append({"role": "assistant", "content": bot_response})
                 except Exception as e:
                     error_msg = f"معذرت، جواب دینے میں خرابی ہوئی۔ Sorry, error generating response: {str(e)}"
@@ -170,20 +201,13 @@ def main():
             error_msg = "ماڈل دستیاب نہیں ہے۔ Model not available."
             st.session_state.messages.append({"role": "assistant", "content": error_msg})
         
-        # Clear input and trigger rerun
-        st.session_state.user_input = ""
         st.rerun()
     
-    # Clear chat button
-    if st.session_state.messages:
-        if st.button("🗑️ چیٹ صاف کریں - Clear Chat", use_container_width=True):
-            st.session_state.messages = [
-                {
-                    "role": "assistant", 
-                    "content": "السلام علیکم! میں اردو چیٹ بوٹ ہوں۔ آپ کیسے مدد کر سکتی ہوں؟"
-                }
-            ]
-            st.rerun()
+    # Display model status
+    if 'chatbot' in st.session_state and st.session_state.chatbot:
+        st.sidebar.success("✅ ماڈل لوڈ ہو گیا - Model loaded successfully")
+    else:
+        st.sidebar.error("❌ ماڈل لوڈ نہیں ہو سکا - Model failed to load")
 
 if __name__ == "__main__":
     main()
