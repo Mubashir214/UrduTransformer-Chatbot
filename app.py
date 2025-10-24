@@ -1,7 +1,12 @@
 ```python
 import streamlit as st
 import torch
+import logging
 from model import TransformerModel, load_vocab, encode_text, pad_seq, ids_to_sentence, generate_response
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Streamlit app configuration
 st.set_page_config(page_title="Urdu Chatbot", page_icon="🤖", layout="centered")
@@ -13,22 +18,36 @@ if "messages" not in st.session_state:
 # Load vocabulary and model
 @st.cache_resource
 def load_model_and_vocab():
-    stoi, itos = load_vocab("vocab.txt")
-    model = TransformerModel(
-        vocab_size=len(itos),
-        d_model=256,
-        enc_layers=2,
-        dec_layers=2,
-        n_heads=2,
-        d_ff=512,
-        dropout=0.1
-    )
-    checkpoint = torch.load("best_transformer_bleu.pt", map_location=torch.device("cpu"))
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model.eval()
-    return model, stoi, itos
+    try:
+        logger.info("Loading vocabulary...")
+        stoi, itos = load_vocab("vocab.txt")
+        logger.info(f"Vocabulary loaded: {len(itos)} tokens")
 
-model, stoi, itos = load_model_and_vocab()
+        logger.info("Initializing model...")
+        model = TransformerModel(
+            vocab_size=len(itos),
+            d_model=256,
+            enc_layers=2,
+            dec_layers=2,
+            n_heads=2,
+            d_ff=512,
+            dropout=0.1
+        )
+        logger.info("Loading model weights...")
+        checkpoint = torch.load("best_transformer_bleu.pt", map_location=torch.device("cpu"))
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
+        logger.info("Model loaded successfully")
+        return model, stoi, itos
+    except Exception as e:
+        logger.error(f"Error loading model or vocabulary: {str(e)}")
+        st.error(f"Failed to load model: {str(e)}")
+        raise e
+
+try:
+    model, stoi, itos = load_model_and_vocab()
+except Exception as e:
+    st.stop()
 
 # Title and description
 st.title("🤖 Urdu Chatbot")
@@ -47,11 +66,14 @@ with st.form(key="chat_form", clear_on_submit=True):
             # Add user message to chat history
             st.session_state.messages.append({"role": "user", "content": user_input})
             
-            # Generate response
-            response = generate_response(user_input, model, stoi, itos)
-            
-            # Add bot response to chat history
-            st.session_state.messages.append({"role": "bot", "content": response})
+            try:
+                # Generate response
+                response = generate_response(user_input, model, stoi, itos)
+                # Add bot response to chat history
+                st.session_state.messages.append({"role": "bot", "content": response})
+            except Exception as e:
+                logger.error(f"Error generating response: {str(e)}")
+                st.error(f"Error generating response: {str(e)}")
 
 # Display chat history
 for message in st.session_state.messages:
@@ -62,5 +84,5 @@ for message in st.session_state.messages:
 
 # Instructions
 st.markdown("---")
-st.markdown("**Instructions**: Enter Urdu text. The bot will respond with a reconstructed sentence. Type 'exit' to clear the chat.")
+st.markdown(f"**Instructions**: Enter Urdu text. The bot will respond with a reconstructed sentence. Type 'exit' to clear the chat. Deployed on {st.session_state.get('deploy_date', 'October 24, 2025, 02:47 PM PKT')}.")
 ```
