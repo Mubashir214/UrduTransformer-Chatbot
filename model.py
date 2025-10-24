@@ -190,6 +190,7 @@ class TransformerModel(nn.Module):
         super().__init__()
         self.enc = Encoder(vocab_size, d_model, enc_layers, n_heads, d_ff, dropout)
         self.dec = Decoder(vocab_size, d_model, dec_layers, n_heads, d_ff, dropout)
+        self.device = torch.device("cpu")
 
     def make_src_mask(self, src):
         return (src != 0).long()
