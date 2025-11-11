@@ -22,121 +22,7 @@ EOS = "<eos>"
 UNK = "<unk>"
 MASK = "<mask>"
 
-class UrduChatbot:
-    def __init__(self, model_path="best_transformer_bleu.pt", vocab_path="vocab.txt"):
-        self.device = DEVICE
-        self.max_len = MAX_LEN
-        
-        # Load vocabulary
-        self.stoi, self.itos = self.load_vocab(vocab_path)
-        self.vocab_size = len(self.itos)
-        self.pad_idx = self.stoi[PAD]
-        self.sos_idx = self.stoi[SOS]
-        self.eos_idx = self.stoi[EOS]
-        self.unk_idx = self.stoi[UNK]
-        
-        # Initialize model
-        self.model = TransformerModel(
-            vocab_size=self.vocab_size,
-            d_model=EMB_DIM,
-            enc_layers=ENC_LAYERS,
-            dec_layers=DEC_LAYERS,
-            n_heads=N_HEADS,
-            d_ff=FFN_DIM,
-            dropout=DROPOUT
-        ).to(self.device)
-        
-        # Load trained weights
-        if os.path.exists(model_path):
-            checkpoint = torch.load(model_path, map_location=self.device)
-            if 'model_state_dict' in checkpoint:
-                self.model.load_state_dict(checkpoint['model_state_dict'])
-            else:
-                self.model.load_state_dict(checkpoint)
-            self.model.eval()
-            print("✅ Model loaded successfully")
-        else:
-            raise FileNotFoundError(f"Model file {model_path} not found")
-
-    def load_vocab(self, vocab_path):
-        """Load vocabulary from vocab.txt."""
-        itos = []
-        with open(vocab_path, "r", encoding="utf-8") as f:
-            for line in f:
-                tok = line.strip()
-                if tok and tok not in itos:
-                    itos.append(tok)
-        for tok in [PAD, SOS, EOS, UNK, MASK]:
-            if tok not in itos:
-                itos.insert(0, tok)
-        stoi = {w: i for i, w in enumerate(itos)}
-        return stoi, itos
-
-    def normalize_urdu(self, text):
-        if not isinstance(text, str):
-            return ""
-        text = re.sub(r'[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]', '', text)
-        text = text.replace('\u0640', '')
-        text = re.sub('[\u0622\u0623\u0625]', 'ا', text)
-        text = re.sub('[\u064A\u06D0]', 'ی', text)
-        text = re.sub(r'\s+', ' ', text).strip()
-        return text
-
-    def encode_text(self, text: str):
-        toks = str(text).split()
-        ids = [self.stoi.get(t, self.unk_idx) for t in toks]
-        ids = [self.sos_idx] + ids + [self.eos_idx]
-        if len(ids) > self.max_len:
-            ids = ids[:self.max_len]
-            if ids[-1] != self.eos_idx:
-                ids[-1] = self.eos_idx
-        return ids
-
-    def pad_seq(self, seq):
-        if len(seq) < self.max_len:
-            return seq + [self.pad_idx] * (self.max_len - len(seq))
-        return seq[:self.max_len]
-
-    def ids_to_sentence(self, ids: List[int]):
-        toks = []
-        for i in ids:
-            if i == self.pad_idx or i == self.sos_idx or i == self.eos_idx:
-                continue
-            toks.append(self.itos[i] if i < len(self.itos) else UNK)
-        return " ".join(toks)
-
-    def make_src_mask(self, src):
-        return (src != self.pad_idx).long()
-
-    def make_tgt_mask(self, tgt):
-        b, seq = tgt.size()
-        pad_mask = (tgt != self.pad_idx).long()
-        subsequent = torch.tril(torch.ones((seq, seq), device=tgt.device)).long()
-        return (pad_mask.unsqueeze(1) * subsequent.unsqueeze(0)).to(tgt.device)
-
-    def generate_response(self, text):
-        """Generate response for the input text."""
-        input_text = self.normalize_urdu(text)
-        src_ids = self.pad_seq(self.encode_text(input_text))
-        src_tensor = torch.tensor([src_ids], dtype=torch.long).to(self.device)
-
-        with torch.no_grad():
-            enc_out = self.model.enc(src_tensor, self.make_src_mask(src_tensor))
-            ys = torch.full((1, 1), self.sos_idx, dtype=torch.long, device=self.device)
-
-            for _ in range(self.max_len - 1):
-                tgt_mask = self.make_tgt_mask(ys)
-                out = self.model.dec(ys, enc_out, tgt_mask=tgt_mask, memory_mask=self.make_src_mask(src_tensor))
-                next_logits = out[:, -1, :]
-                next_token = next_logits.argmax(dim=-1, keepdim=True)
-                ys = torch.cat([ys, next_token], dim=1)
-                if next_token.item() == self.eos_idx:
-                    break
-
-            pred = self.ids_to_sentence(ys[0].cpu().tolist())
-        return pred if pred else "معذرت، میں اس کا جواب نہیں دے سکتا۔"
-
-# Model Components (same as your training code)
+# Model Components
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=5000):
         super().__init__()
@@ -238,17 +124,13 @@ class DecoderLayer(nn.Module):
         return x
 
 class Encoder(nn.Module):
-    def __init__(self, vocab_size, d_model, n_layers, n_heads, d_ff, dropout=0.1):
+    def __init__(self, vocab_size, d_model, n_layers, n_heads, d_ff, dropout=0.1, pad_idx=0):
         super().__init__()
-        self.tok_emb = nn.Embedding(vocab_size, d_model, padding_idx=self.pad_idx)
+        self.pad_idx = pad_idx
+        self.tok_emb = nn.Embedding(vocab_size, d_model, padding_idx=pad_idx)
         self.pos = PositionalEncoding(d_model)
         self.layers = nn.ModuleList([EncoderLayer(d_model, n_heads, d_ff, dropout) for _ in range(n_layers)])
         self.norm = nn.LayerNorm(d_model)
-    
-    @property
-    def pad_idx(self):
-        # This will be set by the parent model
-        return getattr(self, '_pad_idx', 0)
 
     def forward(self, src, src_mask=None):
         x = self.tok_emb(src) * math.sqrt(self.tok_emb.embedding_dim)
@@ -258,17 +140,14 @@ class Encoder(nn.Module):
         return self.norm(x)
 
 class Decoder(nn.Module):
-    def __init__(self, vocab_size, d_model, n_layers, n_heads, d_ff, dropout=0.1):
+    def __init__(self, vocab_size, d_model, n_layers, n_heads, d_ff, dropout=0.1, pad_idx=0):
         super().__init__()
-        self.tok_emb = nn.Embedding(vocab_size, d_model, padding_idx=self.pad_idx)
+        self.pad_idx = pad_idx
+        self.tok_emb = nn.Embedding(vocab_size, d_model, padding_idx=pad_idx)
         self.pos = PositionalEncoding(d_model)
         self.layers = nn.ModuleList([DecoderLayer(d_model, n_heads, d_ff, dropout) for _ in range(n_layers)])
         self.norm = nn.LayerNorm(d_model)
         self.out = nn.Linear(d_model, vocab_size)
-    
-    @property
-    def pad_idx(self):
-        return getattr(self, '_pad_idx', 0)
 
     def forward(self, tgt, enc_out, tgt_mask=None, memory_mask=None):
         x = self.tok_emb(tgt) * math.sqrt(self.tok_emb.embedding_dim)
@@ -279,21 +158,18 @@ class Decoder(nn.Module):
         return self.out(x)
 
 class TransformerModel(nn.Module):
-    def __init__(self, vocab_size, d_model, enc_layers, dec_layers, n_heads, d_ff, dropout=0.1):
+    def __init__(self, vocab_size, d_model, enc_layers, dec_layers, n_heads, d_ff, dropout=0.1, pad_idx=0):
         super().__init__()
-        self.enc = Encoder(vocab_size, d_model, enc_layers, n_heads, d_ff, dropout)
-        self.dec = Decoder(vocab_size, d_model, dec_layers, n_heads, d_ff, dropout)
-        
-        # Set pad_idx for encoder and decoder
-        self.enc._pad_idx = 0  # PAD_IDX
-        self.dec._pad_idx = 0  # PAD_IDX
+        self.pad_idx = pad_idx
+        self.enc = Encoder(vocab_size, d_model, enc_layers, n_heads, d_ff, dropout, pad_idx)
+        self.dec = Decoder(vocab_size, d_model, dec_layers, n_heads, d_ff, dropout, pad_idx)
 
     def make_src_mask(self, src):
-        return (src != 0).long()  # PAD_IDX = 0
+        return (src != self.pad_idx).long()
 
     def make_tgt_mask(self, tgt):
         b, seq = tgt.size()
-        pad_mask = (tgt != 0).long()  # PAD_IDX = 0
+        pad_mask = (tgt != self.pad_idx).long()
         subsequent = torch.tril(torch.ones((seq, seq), device=tgt.device)).long()
         return (pad_mask.unsqueeze(1) * subsequent.unsqueeze(0)).to(tgt.device)
 
@@ -303,3 +179,135 @@ class TransformerModel(nn.Module):
         enc_out = self.enc(src, src_mask)
         logits = self.dec(tgt, enc_out, tgt_mask=tgt_mask, memory_mask=src_mask)
         return logits
+
+class UrduChatbot:
+    def __init__(self, model_path="best_transformer_bleu.pt", vocab_path="vocab.txt"):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.max_len = MAX_LEN
+        
+        # Load vocabulary
+        self.stoi, self.itos = self.load_vocab(vocab_path)
+        self.vocab_size = len(self.itos)
+        self.pad_idx = self.stoi[PAD]
+        self.sos_idx = self.stoi[SOS]
+        self.eos_idx = self.stoi[EOS]
+        self.unk_idx = self.stoi[UNK]
+        
+        print(f"✅ Vocab loaded: {self.vocab_size} tokens")
+        print(f"📊 Special tokens - PAD: {self.pad_idx}, SOS: {self.sos_idx}, EOS: {self.eos_idx}, UNK: {self.unk_idx}")
+        
+        # Initialize model
+        self.model = TransformerModel(
+            vocab_size=self.vocab_size,
+            d_model=EMB_DIM,
+            enc_layers=ENC_LAYERS,
+            dec_layers=DEC_LAYERS,
+            n_heads=N_HEADS,
+            d_ff=FFN_DIM,
+            dropout=DROPOUT,
+            pad_idx=self.pad_idx
+        ).to(self.device)
+        
+        # Load trained weights
+        if os.path.exists(model_path):
+            print("🔄 Loading model weights...")
+            checkpoint = torch.load(model_path, map_location=self.device)
+            if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                self.model.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                self.model.load_state_dict(checkpoint)
+            self.model.eval()
+            print("✅ Model loaded successfully")
+        else:
+            raise FileNotFoundError(f"❌ Model file {model_path} not found")
+
+    def load_vocab(self, vocab_path):
+        """Load vocabulary from vocab.txt."""
+        itos = []
+        with open(vocab_path, "r", encoding="utf-8") as f:
+            for line in f:
+                tok = line.strip()
+                if tok and tok not in itos:
+                    itos.append(tok)
+        
+        # Ensure special tokens are included
+        for tok in [PAD, SOS, EOS, UNK, MASK]:
+            if tok not in itos:
+                itos.insert(0, tok)
+        
+        stoi = {w: i for i, w in enumerate(itos)}
+        return stoi, itos
+
+    def normalize_urdu(self, text):
+        if not isinstance(text, str):
+            return ""
+        text = re.sub(r'[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]', '', text)
+        text = text.replace('\u0640', '')
+        text = re.sub('[\u0622\u0623\u0625]', 'ا', text)
+        text = re.sub('[\u064A\u06D0]', 'ی', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
+    def encode_text(self, text: str):
+        toks = str(text).split()
+        ids = [self.stoi.get(t, self.unk_idx) for t in toks]
+        ids = [self.sos_idx] + ids + [self.eos_idx]
+        if len(ids) > self.max_len:
+            ids = ids[:self.max_len]
+            if ids[-1] != self.eos_idx:
+                ids[-1] = self.eos_idx
+        return ids
+
+    def pad_seq(self, seq):
+        if len(seq) < self.max_len:
+            return seq + [self.pad_idx] * (self.max_len - len(seq))
+        return seq[:self.max_len]
+
+    def ids_to_sentence(self, ids: List[int]):
+        toks = []
+        for i in ids:
+            if i == self.pad_idx or i == self.sos_idx or i == self.eos_idx:
+                continue
+            toks.append(self.itos[i] if i < len(self.itos) else UNK)
+        return " ".join(toks)
+
+    def generate_response(self, text):
+        """Generate response for the input text."""
+        try:
+            input_text = self.normalize_urdu(text)
+            print(f"📥 Input: {input_text}")
+            
+            src_ids = self.encode_text(input_text)
+            src_ids = self.pad_seq(src_ids)
+            src_tensor = torch.tensor([src_ids], dtype=torch.long).to(self.device)
+
+            with torch.no_grad():
+                # Get encoder output
+                src_mask = (src_tensor != self.pad_idx).long()
+                enc_out = self.model.enc(src_tensor, src_mask)
+                
+                # Initialize decoder with SOS token
+                ys = torch.full((1, 1), self.sos_idx, dtype=torch.long, device=self.device)
+
+                for _ in range(self.max_len - 1):
+                    # Create target mask
+                    tgt_mask = self.model.make_tgt_mask(ys)
+                    
+                    # Get decoder output
+                    out = self.model.dec(ys, enc_out, tgt_mask=tgt_mask, memory_mask=src_mask)
+                    next_logits = out[:, -1, :]
+                    next_token = next_logits.argmax(dim=-1, keepdim=True)
+                    ys = torch.cat([ys, next_token], dim=1)
+                    
+                    # Stop if EOS token is generated
+                    if next_token.item() == self.eos_idx:
+                        break
+
+                pred = self.ids_to_sentence(ys[0].cpu().tolist())
+            
+            print(f"📤 Output: {pred}")
+            return pred if pred else "معذرت، میں اس کا جواب نہیں دے سکتا۔"
+            
+        except Exception as e:
+            print(f"❌ Error in generation: {str(e)}")
+            return f"معذرت، جواب دینے میں خرابی ہوئی: {str(e)}"
