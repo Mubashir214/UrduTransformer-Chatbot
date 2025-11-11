@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 import torch
 from model import UrduChatbot
@@ -46,6 +47,9 @@ st.markdown("""
         border-radius: 10px;
         border-left: 5px solid #28a745;
     }
+    .stSpinner > div {
+        text-align: center;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -53,6 +57,14 @@ st.markdown("""
 def load_chatbot():
     """Load the chatbot model with caching to avoid reloading on every interaction."""
     try:
+        # Check if model files exist
+        if not os.path.exists("best_transformer_bleu.pt"):
+            st.error("❌ Model file 'best_transformer_bleu.pt' not found. Please ensure it's in the same directory.")
+            return None
+        if not os.path.exists("vocab.txt"):
+            st.error("❌ Vocabulary file 'vocab.txt' not found. Please ensure it's in the same directory.")
+            return None
+            
         chatbot = UrduChatbot()
         return chatbot
     except Exception as e:
@@ -70,8 +82,8 @@ def main():
         <div class="info-box">
         <h4>کیسے استعمال کریں:</h4>
         <p>1. نیچے دیے گئے باکس میں اپنا پیغام لکھیں</p>
-        <p>2: 'بھیجیں' بٹن پر کلک کریں یا Enter دبائیں</p>
-        <p>3: بوٹ کا جواب اوپر نظر آئے گا</p>
+        <p>2. 'بھیجیں' بٹن پر کلک کریں یا Enter دبائیں</p>
+        <p>3. بوٹ کا جواب اوپر نظر آئے گا</p>
         <br>
         <h4>How to use:</h4>
         <p>1. Type your message in the box below</p>
@@ -85,7 +97,7 @@ def main():
         
         # Initialize chatbot in session state
         if 'chatbot' not in st.session_state:
-            with st.spinner("🔄 ماڈل لوڈ ہو رہا ہے..."):
+            with st.spinner("🔄 ماڈل لوڈ ہو رہا ہے... Loading model..."):
                 st.session_state.chatbot = load_chatbot()
         
         # Initialize chat history
@@ -99,11 +111,11 @@ def main():
         
         # Example buttons
         examples = [
-            "کیا حال ہے؟",
             "آپ کا نام کیا ہے؟",
-            "میں ٹھیک ہوں",
+            "کیا حال ہے؟",
             "اسلام علیکم",
-            "آپ کیسے ہیں؟"
+            "آپ کیسے ہیں؟",
+            "شکریہ"
         ]
         
         for example in examples:
@@ -111,13 +123,18 @@ def main():
                 # Process example message
                 st.session_state.messages.append({"role": "user", "content": example})
                 if st.session_state.chatbot:
-                    with st.spinner("🤖 بوٹ سوچ رہا ہے..."):
+                    with st.spinner("🤖 بوٹ سوچ رہا ہے... Bot is thinking..."):
                         try:
                             bot_response = st.session_state.chatbot.generate_response(example)
                             st.session_state.messages.append({"role": "assistant", "content": bot_response})
                         except Exception as e:
                             error_msg = f"معذرت، جواب دینے میں خرابی ہوئی۔ Sorry, error generating response: {str(e)}"
                             st.session_state.messages.append({"role": "assistant", "content": error_msg})
+                else:
+                    st.session_state.messages.append({
+                        "role": "assistant", 
+                        "content": "ماڈل دستیاب نہیں ہے۔ Model not available."
+                    })
                 st.rerun()
         
         st.markdown("---")
