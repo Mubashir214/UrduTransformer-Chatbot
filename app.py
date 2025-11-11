@@ -16,39 +16,50 @@ st.set_page_config(
 st.markdown("""
 <style>
     .main-header {
-        font-size: 3rem;
+        font-size: 2.5rem;
         color: #1f77b4;
         text-align: center;
         margin-bottom: 2rem;
+        font-weight: bold;
     }
     .urdu-text {
         font-family: 'Noto Sans Arabic', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        font-size: 1.2rem;
+        font-size: 1.3rem;
         direction: rtl;
         text-align: right;
+        line-height: 1.6;
     }
     .user-message {
         background-color: #e6f3ff;
-        padding: 1rem;
-        border-radius: 10px;
-        margin: 0.5rem 0;
+        padding: 1.2rem;
+        border-radius: 15px;
+        margin: 0.8rem 0;
         border-left: 5px solid #1f77b4;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .bot-message {
         background-color: #f0f8ff;
-        padding: 1rem;
-        border-radius: 10px;
-        margin: 0.5rem 0;
+        padding: 1.2rem;
+        border-radius: 15px;
+        margin: 0.8rem 0;
         border-left: 5px solid #ff6b6b;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .info-box {
         background-color: #f8f9fa;
-        padding: 1rem;
+        padding: 1.2rem;
         border-radius: 10px;
         border-left: 5px solid #28a745;
+        margin: 0.5rem 0;
     }
-    .stSpinner > div {
-        text-align: center;
+    .stButton button {
+        width: 100%;
+        border-radius: 8px;
+        font-weight: 500;
+    }
+    .stTextInput input {
+        border-radius: 8px;
+        padding: 12px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -80,15 +91,15 @@ def main():
         st.header("ℹ️ رہنمائی - Instructions")
         st.markdown("""
         <div class="info-box">
-        <h4>کیسے استعمال کریں:</h4>
-        <p>1. نیچے دیے گئے باکس میں اپنا پیغام لکھیں</p>
-        <p>2. 'بھیجیں' بٹن پر کلک کریں یا Enter دبائیں</p>
-        <p>3. بوٹ کا جواب اوپر نظر آئے گا</p>
+        <h4>🔄 کیسے استعمال کریں:</h4>
+        <p>• نیچے دیے گئے باکس میں اپنا پیغام لکھیں</p>
+        <p>• 'بھیجیں' بٹن پر کلک کریں یا Enter دبائیں</p>
+        <p>• بوٹ کا جواب اوپر نظر آئے گا</p>
         <br>
-        <h4>How to use:</h4>
-        <p>1. Type your message in the box below</p>
-        <p>2. Click 'Send' or press Enter</p>
-        <p>3. Bot's response will appear above</p>
+        <h4>🔄 How to use:</h4>
+        <p>• Type your message in the box below</p>
+        <p>• Click 'Send' or press Enter</p>
+        <p>• Bot's response will appear above</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -112,18 +123,19 @@ def main():
         # Example buttons
         examples = [
             "آپ کا نام کیا ہے؟",
-            "کیا حال ہے؟",
+            "کیا حال ہے؟", 
             "اسلام علیکم",
             "آپ کیسے ہیں؟",
-            "شکریہ"
+            "شکریہ",
+            "خدا حافظ"
         ]
         
         for example in examples:
-            if st.button(example, key=f"example_{example}"):
+            if st.button(example, key=f"example_{example}", use_container_width=True):
                 # Process example message
                 st.session_state.messages.append({"role": "user", "content": example})
                 if st.session_state.chatbot:
-                    with st.spinner("🤖 بوٹ سوچ رہا ہے... Bot is thinking..."):
+                    with st.spinner("🤖 بوٹ سوچ رہا ہے..."):
                         try:
                             bot_response = st.session_state.chatbot.generate_response(example)
                             st.session_state.messages.append({"role": "assistant", "content": bot_response})
@@ -141,10 +153,11 @@ def main():
         st.markdown("""
         <div class="info-box">
         <h4>📊 ماڈل کی معلومات</h4>
-        <p><strong>ٹرانسفارمر ماڈل</strong></p>
+        <p><strong>🧠 ٹرانسفارمر ماڈل</strong></p>
         <p>• 2 انکوڈر/ڈیکوڈر پرت</p>
         <p>• 2 ہیڈز اٹینشن</p>
         <p>• 256 ایمبیڈنگ ڈائمینشن</p>
+        <p>• 512 فیڈ فارورڈ ڈائمینشن</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -190,13 +203,13 @@ def main():
             user_input = st.text_input(
                 "اپنا پیغام یہاں لکھیں - Type your message here:",
                 key="user_input",
-                placeholder="اپنا پیغام یہاں لکھیں... Type your message here...",
+                placeholder="مثال: آپ کا نام کیا ہے؟",
                 label_visibility="collapsed"
             )
         
         with col2:
             submit_button = st.form_submit_button(
-                "📤 بھیجیں - Send", 
+                "📤 بھیجیں", 
                 use_container_width=True
             )
     
@@ -207,7 +220,7 @@ def main():
         
         # Generate bot response
         if st.session_state.chatbot:
-            with st.spinner("🤖 بوٹ سوچ رہا ہے... Bot is thinking..."):
+            with st.spinner("🤖 بوٹ سوچ رہا ہے..."):
                 try:
                     bot_response = st.session_state.chatbot.generate_response(user_input.strip())
                     st.session_state.messages.append({"role": "assistant", "content": bot_response})
@@ -225,6 +238,16 @@ def main():
         st.sidebar.success("✅ ماڈل لوڈ ہو گیا - Model loaded successfully")
     else:
         st.sidebar.error("❌ ماڈل لوڈ نہیں ہو سکا - Model failed to load")
+        
+    # Footer
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align: center; color: #666;'>"
+        "🤖 اردو ٹرانسفارمر چیٹ بوٹ - Urdu Transformer Chatbot<br>"
+        "Built with Streamlit & PyTorch"
+        "</div>",
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
     main()
